@@ -2,16 +2,13 @@ pipeline {
   agent any
 
   environment {
-    IMAGE_NAME = 'imalshar/jenkins-flask-app'   // change to YOUR docker hub username/repo
-    VENV_DIR   = ".venv"
+    APP_NAME = 'jenkins-flask-app'
+    VENV_DIR = '.venv'
   }
 
   stages {
-
     stage('Checkout') {
-      steps {
-        checkout scm
-      }
+      steps { checkout scm }
     }
 
     stage('Setup') {
@@ -38,32 +35,42 @@ pipeline {
 
     stage('Login to Docker Hub') {
       steps {
-        withCredentials([usernamePassword(credentialsId: 'docker-creds', usernameVariable: 'USERNAME', passwordVariable: 'PASSWORD')]) {
-          sh 'echo "$PASSWORD" | docker login -u "$USERNAME" --password-stdin'
+        withCredentials([usernamePassword(credentialsId: 'docker-creds', usernameVariable: 'DOCKERHUB_USER', passwordVariable: 'DOCKERHUB_TOKEN')]) {
+          sh 'echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USER" --password-stdin'
         }
-        echo 'Login successfully'
       }
     }
 
     stage('Build Image') {
       steps {
-        sh '''
-          set -e
-          docker build -t "${IMAGE_NAME}:latest" .
-          docker image ls | head -n 20
-        '''
-        echo "Docker image build successfully"
+        withCredentials([usernamePassword(credentialsId: 'docker-creds', usernameVariable: 'DOCKERHUB_USER', passwordVariable: 'DOCKERHUB_TOKEN')]) {
+          sh '''
+            set -e
+            IMAGE_NAME="$DOCKERHUB_USER/${APP_NAME}"
+            docker build -t "${IMAGE_NAME}:latest" .
+            docker image ls | head -n 20
+          '''
+        }
       }
     }
 
     stage('Push Image') {
       steps {
-        sh '''
-          set -e
-          docker push "${IMAGE_NAME}:latest"
-        '''
-        echo "Docker image push successfully"
+        withCredentials([usernamePassword(credentialsId: 'docker-creds', usernameVariable: 'DOCKERHUB_USER', passwordVariable: 'DOCKERHUB_TOKEN')]) {
+          sh '''
+            set -e
+            IMAGE_NAME="$DOCKERHUB_USER/${APP_NAME}"
+            docker push "${IMAGE_NAME}:latest"
+          '''
+        }
       }
+    }
+  }
+
+  post {
+    always {
+      sh 'docker logout || true'
+      sh 'rm -rf .venv || true'
     }
   }
 }
